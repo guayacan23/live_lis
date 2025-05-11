@@ -1,43 +1,68 @@
 <?php
+session_start(); // ¡Asegúrate de iniciar la sesión al principio del archivo!
+
+// Datos de conexión a la base de datos
 $servername = "localhost";
-$username = "root";
+$username = "harold";
 $password = "";
-$database = "live_lis";
-$port = 3306; // Especifica el puerto
+$dbname = "lis";
+$tabla_usuarios = "usuarios";
 
-// Crear conexión
-$conn = new mysqli($servername, $username, $password, $database, $port);
+$conn = new mysqli($servername, $username, $password, $dbname);
 
-// Verificar la conexión
 if ($conn->connect_error) {
-    die("Conexión fallida: " . $conn->connect_error);
+    die("Error de conexión a la base de datos: " . $conn->connect_error);
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $correo = $_POST["correo"];
     $contrasena = $_POST["contrasena"];
 
-    // Preparar la consulta SQL para buscar el usuario por correo
-    $sql = "SELECT id, contrasena FROM usuarios WHERE correo = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $correo);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows == 1) {
-        $row = $result->fetch_assoc();
-        if (password_verify($contrasena, $row["contrasena"])) {
-            echo "<script>alert('Inicio de sesión exitoso.'); window.location.href='pagina_principal.html';</script>";
-            // Aquí podrías iniciar una sesión (usando $_SESSION) para mantener al usuario logueado
-        } else {
-            echo "<script>alert('Contraseña incorrecta.'); window.history.back();</script>";
-        }
-    } else {
-        echo "<script>alert('No se encontró ningún usuario con ese correo.'); window.history.back();</script>";
+    if (empty($correo) || empty($contrasena)) {
+        echo '<script>alert("Por favor, ingresa tu correo electrónico y contraseña."); window.history.back();</script>';
+        $conn->close();
+        exit();
     }
 
-    $stmt->close();
+    $sql_buscar = "SELECT id, contrasena, rol FROM $tabla_usuarios WHERE correo = ?";
+    $stmt_buscar = $conn->prepare($sql_buscar);
+    $stmt_buscar->bind_param("s", $correo);
+    $stmt_buscar->execute();
+    $stmt_buscar->store_result();
+
+    if ($stmt_buscar->num_rows == 1) {
+        $stmt_buscar->bind_result($user_id, $contrasena_hash_db, $rol_usuario);
+        $stmt_buscar->fetch();
+
+        if (password_verify($contrasena, $contrasena_hash_db)) {
+            // Contraseña correcta, guardar el rol en la sesión
+            $_SESSION['rol'] = $rol_usuario;
+            $_SESSION['usuario_id'] = $user_id; // Opcional: guardar el ID del usuario
+
+            
+            if ($rol_usuario == "Administrador") {
+                header("Location: panel_administrador.php");
+            } elseif ($rol_usuario == "lider laboratorio"){
+                header("Location: panel_laboratorio.php");
+            } elseif ($rol_usuario == "lider enfermeria") {
+                header("Location: panel_enfermeria.php");
+            } else {
+                // Rol no reconocido, redirigir a una página por defecto
+                header("Location: inicio.html");
+            }
+            exit();
+        } else {
+            echo '<script>alert("La contraseña no coincide."); window.history.back();</script>';
+        }
+    } else {
+        echo '<script>alert("No se encontró ningún usuario con ese correo electrónico."); window.history.back();</script>';
+    }
+
+    $stmt_buscar->close();
+} else {
+    echo '<script>alert("No se recibieron datos del formulario de inicio de sesión."); window.history.back();</script>';
 }
 
 $conn->close();
+
 ?>
